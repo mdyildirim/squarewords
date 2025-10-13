@@ -24,11 +24,13 @@ body {
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding: 1.5rem clamp(1rem, 2vw, 3rem) 4rem;
+  padding: clamp(1rem, 2.5vw, 2.5rem) clamp(0.75rem, 2.5vw, 2rem) 4rem;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 .app-shell {
-  width: min(1024px, 100%);
+  width: min(960px, 100%);
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -133,8 +135,11 @@ body {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(var(--board-size), minmax(56px, 1fr));
-  gap: 0.65rem;
+  grid-template-columns: repeat(var(--board-size), minmax(0, 1fr));
+  gap: clamp(0.45rem, 1.8vw, 0.65rem);
+  width: min(100%, clamp(320px, 70vw, 520px));
+  margin: 0 auto;
+  touch-action: none;
 }
 
 .tile {
@@ -144,12 +149,14 @@ body {
   display: grid;
   place-items: center;
   font-weight: 600;
-  font-size: clamp(1.5rem, 8vw, 2.2rem);
+  font-size: clamp(1.35rem, 10vw, 2.15rem);
   color: var(--text);
   text-transform: uppercase;
   cursor: pointer;
   position: relative;
   transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .tile::after {
@@ -314,5 +321,34 @@ body {
 
   .controls {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .hero,
+  .status-card,
+  .board-section,
+  .word-list,
+  .insight-card {
+    border-radius: 1rem;
+  }
+
+  .current-word {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 420px) {
+  body {
+    padding: clamp(0.75rem, 4vw, 1.5rem);
+    padding-bottom: 4.5rem;
+  }
+
+  .board {
+    width: 100%;
+    gap: clamp(0.35rem, 4vw, 0.55rem);
+  }
+
+  .tile {
+    border-radius: 0.85rem;
   }
 }
