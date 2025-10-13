@@ -203,6 +203,76 @@ body {
   cursor: default;
 }
 
+@media (max-width: 900px) {
+  body {
+    padding: clamp(1rem, 3vw, 2rem) clamp(0.5rem, 2.5vw, 1.5rem) 3.5rem;
+  }
+
+  .app-shell {
+    gap: 1.25rem;
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 0.75rem;
+  }
+
+  .layout {
+    gap: 1.25rem;
+  }
+
+  .board {
+    gap: clamp(0.35rem, 2vw, 0.5rem);
+    width: min(100%, 440px);
+  }
+
+  .tile {
+    border-radius: 0.85rem;
+    font-size: clamp(1.1rem, 8vw, 1.7rem);
+  }
+
+  .tile::after {
+    inset: 3px;
+    border-radius: 0.75rem;
+  }
+}
+
+@media (max-width: 540px) {
+  body {
+    padding: clamp(0.75rem, 5vw, 1.25rem) clamp(0.5rem, 4vw, 1rem) 3rem;
+  }
+
+  .hero {
+    align-items: center;
+    text-align: center;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.6rem, 9vw, 2.1rem);
+  }
+
+  .status-card {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
+
+  .board {
+    gap: clamp(0.28rem, 3vw, 0.4rem);
+    width: min(100%, 360px);
+  }
+
+  .tile {
+    border-radius: 0.7rem;
+    font-size: clamp(0.95rem, 9vw, 1.45rem);
+  }
+
+  .tile::after {
+    inset: 2.5px;
+    border-radius: 0.6rem;
+  }
+}
+
 .current-word {
   display: flex;
   justify-content: space-between;

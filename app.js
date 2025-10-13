@@ -71,7 +71,8 @@ const state = {
   iqScore: BASE_IQ,
   streak: 0,
   hintsUsed: 0,
-  wordPlacements: []
+  wordPlacements: [],
+  solvedPaths: new Map()
 };
 
 async function fetchGeminiPuzzle() {
@@ -271,6 +272,53 @@ function tryPlaceWordOnBoard(word, board, gridDim) {
   return null;
 }
 
+function boardContainsWord(letters, gridDim, word) {
+  const target = word.toUpperCase();
+  const totalCells = letters.length;
+
+  const search = (index, depth, visited) => {
+    if (letters[index] !== target[depth]) {
+      return false;
+    }
+
+    if (depth === target.length - 1) {
+      return true;
+    }
+
+    visited.add(index);
+    const neighbors = getNeighborIndices(index, gridDim);
+    for (const neighbor of neighbors) {
+      if (visited.has(neighbor)) continue;
+      if (search(neighbor, depth + 1, visited)) {
+        visited.delete(index);
+        return true;
+      }
+    }
+    visited.delete(index);
+    return false;
+  };
+
+  for (let start = 0; start < totalCells; start++) {
+    if (letters[start] !== target[0]) {
+      continue;
+    }
+    if (search(start, 0, new Set())) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function validateLayout(layout, words) {
+  const uppercaseLetters = layout.letters.map((letter) => (letter ?? '').toUpperCase());
+  const missing = words.filter((word) => !boardContainsWord(uppercaseLetters, layout.gridDim, word));
+  return {
+    valid: missing.length === 0,
+    missing
+  };
+}
+
 function generateBoardLayout(words) {
   const uppercaseWords = words
     .map((word) => word.toUpperCase())
@@ -342,6 +390,8 @@ function renderBoard() {
     boardEl.appendChild(tile);
   });
 
+  applySolvedHighlights();
+
   if (state.wordPlacements.length) {
     log.info('Board rendered with placements');
     console.table(
@@ -353,6 +403,17 @@ function renderBoard() {
   } else {
     log.info('Board rendered without placement metadata');
   }
+}
+
+function applySolvedHighlights() {
+  state.solvedPaths.forEach((indices) => {
+    indices.forEach((index) => {
+      const tile = boardEl.querySelector(`[data-index="${index}"]`);
+      if (tile) {
+        tile.classList.add('solved');
+      }
+    });
+  });
 }
 
 function updateCurrentWord(message) {
@@ -623,14 +684,26 @@ function revealAll() {
 }
 
 function shuffleBoard() {
-  for (let i = state.boardLetters.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [state.boardLetters[i], state.boardLetters[j]] = [state.boardLetters[j], state.boardLetters[i]];
-  }
-  state.wordPlacements = [];
+  log.info('Shuffle requested—regenerating board layout');
+  const layout = generateBoardLayout(state.targetWords);
+  state.boardLetters = layout.letters;
+  state.gridDim = layout.gridDim;
+  state.wordPlacements = layout.placements;
+  state.found.clear();
+  state.solvedPaths = new Map();
+  state.streak = 0;
+  state.iqScore = BASE_IQ;
+  state.hintsUsed = 0;
+  updateWordList(state.targetWords);
   renderBoard();
-  flashMessage('Grid remixed. Follow the flow!');
-  log.info('Board shuffled and placement metadata cleared');
+  updateWordsFound();
+  updateIqScore();
+  updateStreak();
+  flashMessage('Fresh layout generated. Progress reset—dive back in!');
+  log.info('Board regenerated on shuffle', {
+    gridDim: state.gridDim,
+    words: state.targetWords.length
+  });
 }
 
 async function shareProgress() {
@@ -678,6 +751,7 @@ async function loadPuzzle() {
   state.hintsUsed = 0;
   state.streak = 0;
   state.iqScore = BASE_IQ;
+  state.solvedPaths = new Map();
 
   const { letters, gridDim, placements } = generateBoardLayout(state.targetWords);
   state.boardLetters = letters;
