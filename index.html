@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SquareWords IQ</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div class="hero__text">
+          <h1>SquareWords IQ</h1>
+          <p class="tagline">
+            Swipe the grid, unlock words, and watch your NeuroSpark IQ soar.
+          </p>
+        </div>
+        <button id="apiKeyBtn" class="ghost-btn" type="button">
+          <span>API Key</span>
+        </button>
+      </header>
+
+      <main class="layout">
+        <section class="status-card">
+          <div class="status-card__metric">
+            <p class="label">IQ SCORE</p>
+            <div class="iq-meter" role="meter" aria-valuemin="80" aria-valuemax="200" aria-valuenow="90">
+              <div class="iq-meter__fill" id="iqFill"></div>
+              <span id="iqValue">90</span>
+            </div>
+          </div>
+          <div class="status-card__metric">
+            <p class="label">WORDS FOUND</p>
+            <p class="value" id="wordsFound">0</p>
+          </div>
+          <div class="status-card__metric">
+            <p class="label">STREAK</p>
+            <p class="value" id="streakValue">0</p>
+          </div>
+        </section>
+
+        <section class="board-section">
+          <div id="board" class="board" aria-label="Letter grid" role="application"></div>
+          <div class="current-word" aria-live="polite">
+            <span id="currentWord">Tap tiles to build a word</span>
+            <button id="shuffleBtn" class="ghost-btn" type="button">Shuffle</button>
+          </div>
+          <div class="controls">
+            <button id="submitBtn" class="primary-btn" type="button">Submit</button>
+            <button id="clearBtn" class="ghost-btn" type="button">Clear</button>
+            <button id="hintBtn" class="ghost-btn" type="button">Hint</button>
+            <button id="revealBtn" class="ghost-btn" type="button">Reveal All</button>
+          </div>
+        </section>
+
+        <section class="word-list" aria-live="polite">
+          <h2>Word Quest</h2>
+          <ul id="wordList"></ul>
+        </section>
+
+        <section class="insight-card">
+          <h2>Spotlight Insight</h2>
+          <p id="insightMessage">
+            Loading your lexical playground…
+          </p>
+          <button id="shareBtn" class="primary-btn" type="button">Share My Brilliance</button>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="apiDialog">
+      <form method="dialog" class="api-form">
+        <h2>API Key</h2>
+        <p>
+          Enter your Google AI Studio key to generate a fresh puzzle with
+          our cloud-powered word engine. Your key stays in this
+          browser only.
+        </p>
+        <input id="apiKeyInput" type="password" placeholder="AIza..." aria-label="API key" />
+        <menu>
+          <button value="cancel" class="ghost-btn">Cancel</button>
+          <button value="confirm" class="primary-btn">Save</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <template id="wordTemplate">
+      <li>
+        <span class="word"></span>
+        <span class="status"></span>
+      </li>
+    </template>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
