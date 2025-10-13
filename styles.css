@@ -176,6 +176,27 @@ body {
   background: linear-gradient(135deg, rgba(110, 250, 204, 0.2), rgba(39, 223, 177, 0.35));
 }
 
+.tile.celebrate {
+  animation: tileCelebrate 0.72s ease var(--celebrate-delay, 0ms);
+  background: linear-gradient(135deg, rgba(110, 250, 204, 0.45), rgba(39, 223, 177, 0.65));
+  box-shadow: 0 12px 30px rgba(110, 250, 204, 0.5);
+}
+
+@keyframes tileCelebrate {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.18);
+  }
+  60% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .tile.disabled {
   background: rgba(255, 255, 255, 0.02);
   color: rgba(247, 249, 255, 0.35);

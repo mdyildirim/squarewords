@@ -1,10 +1,11 @@
 const BOARD_MIN_DIM = 4;
-const BOARD_MAX_DIM = 6;
+const BOARD_MAX_DIM = 10;
 const BASE_IQ = 90;
 const IQ_PER_WORD = 7;
 const STREAK_BONUS = 3;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const LOG_TAG = '[SquareWords]';
+const BOARD_LAYOUT_ATTEMPTS = 90;
 
 const log = {
   info: (...args) => console.info(LOG_TAG, ...args),
@@ -47,7 +48,6 @@ const streakValueEl = document.querySelector('#streakValue');
 const insightMessageEl = document.querySelector('#insightMessage');
 const hintBtn = document.querySelector('#hintBtn');
 const revealBtn = document.querySelector('#revealBtn');
-const submitBtn = document.querySelector('#submitBtn');
 const clearBtn = document.querySelector('#clearBtn');
 const shuffleBtn = document.querySelector('#shuffleBtn');
 const shareBtn = document.querySelector('#shareBtn');
@@ -105,7 +105,9 @@ async function fetchGeminiPuzzle() {
     } catch (timerError) {
       log.debug('Timer already settled', timerError.message);
     }
-    log.warn('Remote puzzle fetch failed, using fallback puzzle.', error);
+    log.warn('Remote puzzle fetch failed, using fallback puzzle.', {
+      message: error instanceof Error ? error.message : String(error)
+    });
     return {
       words: [...DEFAULT_PUZZLE.words],
       insight: DEFAULT_PUZZLE.insight,
@@ -136,39 +138,83 @@ function getNeighborIndices(index, gridDim) {
 }
 
 function generateFallbackLayout(words) {
-  log.warn('Falling back to frequency-based board layout');
-  const letterRequirements = new Map();
-  for (const word of words) {
-    const counts = new Map();
-    for (const char of word) {
-      if (!/[A-Z]/.test(char)) continue;
-      counts.set(char, (counts.get(char) || 0) + 1);
-    }
-    for (const [char, count] of counts.entries()) {
-      letterRequirements.set(char, Math.max(letterRequirements.get(char) || 0, count));
-    }
-  }
-
-  let letters = [];
-  for (const [char, count] of letterRequirements.entries()) {
-    letters.push(...Array.from({ length: count }, () => char));
-  }
-
-  const gridDim = Math.min(
-    BOARD_MAX_DIM,
-    Math.max(BOARD_MIN_DIM, Math.ceil(Math.sqrt(Math.max(letters.length, BOARD_MIN_DIM ** 2))))
+  const totalLetters = words.reduce((sum, word) => sum + word.length, 0);
+  let gridDim = Math.max(
+    BOARD_MIN_DIM,
+    Math.ceil(Math.sqrt(Math.max(totalLetters, BOARD_MIN_DIM ** 2)))
   );
-  const boardSlots = gridDim * gridDim;
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  while (letters.length < boardSlots) {
-    letters.push(alphabet[Math.floor(Math.random() * alphabet.length)]);
+
+  while (gridDim * gridDim < totalLetters && gridDim < BOARD_MAX_DIM) {
+    gridDim += 1;
   }
-  shuffleArray(letters);
+
+  if (gridDim * gridDim < totalLetters) {
+    log.warn('Expanding board beyond recommended density', {
+      requestedLetters: totalLetters,
+      chosenDim: gridDim
+    });
+  }
+
+  const boardSlots = gridDim * gridDim;
+  const board = Array(boardSlots).fill(null);
+  const placements = [];
+  const serpentineOrder = [];
+
+  for (let row = 0; row < gridDim; row++) {
+    const cols = [...Array(gridDim).keys()];
+    if (row % 2 === 1) {
+      cols.reverse();
+    }
+    for (const col of cols) {
+      serpentineOrder.push(row * gridDim + col);
+    }
+  }
+
+  let cursor = 0;
+  let overflow = false;
+  for (const word of words) {
+    const path = [];
+    for (const letter of word) {
+      if (cursor >= serpentineOrder.length) {
+        log.error('Fallback layout ran out of board space', { gridDim, word });
+        overflow = true;
+        break;
+      }
+      const index = serpentineOrder[cursor];
+      board[index] = letter;
+      path.push(index);
+      cursor += 1;
+    }
+    placements.push({ word, path });
+    if (overflow) {
+      break;
+    }
+  }
+
+  if (overflow) {
+    log.error('Fallback layout could not place every letter', {
+      placedWords: placements.length,
+      expectedWords: words.length
+    });
+  }
+
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  for (let i = 0; i < board.length; i++) {
+    if (!board[i]) {
+      board[i] = alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+  }
+
+  log.warn('Using deterministic serpentine board layout', {
+    gridDim,
+    placements: placements.length,
+    totalLetters
+  });
 
   return {
-    letters: letters.slice(0, boardSlots),
+    letters: board,
     gridDim,
-    placements: []
+    placements
   };
 }
 
@@ -239,9 +285,14 @@ function generateBoardLayout(words) {
   const longest = sortedWords[0]?.length || BOARD_MIN_DIM;
   const minDim = Math.max(BOARD_MIN_DIM, Math.ceil(Math.sqrt(longest)));
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  log.info('Attempting structured board layout', {
+    wordCount: sortedWords.length,
+    minDim,
+    longest
+  });
 
   for (let gridDim = minDim; gridDim <= BOARD_MAX_DIM; gridDim++) {
-    for (let attempt = 0; attempt < 60; attempt++) {
+    for (let attempt = 0; attempt < BOARD_LAYOUT_ATTEMPTS; attempt++) {
       const board = Array(gridDim * gridDim).fill(null);
       const placements = [];
       let success = true;
@@ -257,12 +308,19 @@ function generateBoardLayout(words) {
 
       if (success) {
         const letters = board.map((cell) => cell ?? alphabet[Math.floor(Math.random() * alphabet.length)]);
-        log.info('Generated structured board layout', { gridDim, attempt: attempt + 1 });
+        log.info('Generated structured board layout', {
+          gridDim,
+          attempt: attempt + 1,
+          placements: placements.length
+        });
         return { letters, gridDim, placements };
       }
     }
   }
 
+  log.warn('Unable to embed all words using structured layout, invoking fallback', {
+    words: sortedWords.length
+  });
   return generateFallbackLayout(sortedWords);
 }
 
@@ -366,6 +424,7 @@ function handlePointerUp(event) {
   document.removeEventListener('pointermove', handlePointerMove);
   document.removeEventListener('pointerup', handlePointerUp);
   document.removeEventListener('pointercancel', handlePointerUp);
+  finalizeSelection({ reason: 'pointerup' });
 }
 
 function handlePointerMove(event) {
@@ -439,23 +498,41 @@ function isAdjacent(index) {
   return Math.abs(row - lastRow) <= 1 && Math.abs(col - lastCol) <= 1;
 }
 
-function submitWord() {
-  const guess = state.selected.map((index) => state.boardLetters[index]).join('').toLowerCase();
+function celebrateWord(indices) {
+  const tiles = indices
+    .map((index) => boardEl.querySelector(`[data-index="${index}"]`))
+    .filter(Boolean);
+  tiles.forEach((tile, position) => {
+    tile.classList.add('celebrate');
+    tile.style.setProperty('--celebrate-delay', `${position * 40}ms`);
+  });
+  setTimeout(() => {
+    tiles.forEach((tile) => tile.classList.remove('celebrate'));
+  }, 720);
+}
+
+function finalizeSelection(options = {}) {
+  const { reason = 'manual' } = options;
+  const selection = [...state.selected];
+  const guess = selection.map((index) => state.boardLetters[index]).join('').toLowerCase();
+
   if (!guess) {
-    flashMessage('Select letters to make a word.');
+    clearSelection({ silent: true });
     return;
   }
-  clearSelection();
 
   if (state.found.has(guess)) {
+    log.info('Duplicate word ignored', { guess, reason });
+    clearSelection({ silent: true });
     flashMessage('You already banked that word.');
     return;
   }
 
   if (!state.targetWords.includes(guess)) {
+    log.info('Selection not in puzzle', { guess, reason });
     state.streak = 0;
     updateStreak();
-    flashMessage('Nice try! That word is not on today\'s list.');
+    clearSelection({ silent: true });
     return;
   }
 
@@ -465,11 +542,15 @@ function submitWord() {
   updateStreak();
   updateIqScore();
   updateWordsFound();
+  celebrateWord(selection);
+  log.info('Word solved', { guess, reason, streak: state.streak });
   flashMessage(`✨ ${guess.toUpperCase()} unlocked!`);
 
   if (state.found.size === state.targetWords.length) {
     flashMessage('You solved the entire vault!');
   }
+
+  setTimeout(() => clearSelection({ silent: true }), 640);
 }
 
 function updateIqScore() {
@@ -617,7 +698,6 @@ async function loadPuzzle() {
 }
 
 function registerEvents() {
-  submitBtn.addEventListener('click', submitWord);
   clearBtn.addEventListener('click', () => clearSelection());
   hintBtn.addEventListener('click', provideHint);
   revealBtn.addEventListener('click', revealAll);
@@ -629,7 +709,7 @@ function registerEvents() {
       return;
     }
     if (event.key === 'Enter') {
-      submitWord();
+      finalizeSelection({ reason: 'keyboard' });
     } else if (event.key === 'Backspace' || event.key === 'Escape') {
       clearSelection();
     }
