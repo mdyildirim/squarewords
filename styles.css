@@ -182,16 +182,6 @@ body {
   box-shadow: 0 12px 30px rgba(110, 250, 204, 0.5);
 }
 
-.tile.solved:not(.celebrate) {
-  background: linear-gradient(135deg, rgba(110, 250, 204, 0.4), rgba(39, 223, 177, 0.55));
-  box-shadow: 0 8px 24px rgba(110, 250, 204, 0.45);
-  color: #0b1b16;
-}
-
-.tile.solved::after {
-  border-color: rgba(10, 70, 54, 0.45);
-}
-
 @keyframes tileCelebrate {
   0% {
     transform: scale(1);
