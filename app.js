@@ -4,6 +4,19 @@ const BASE_IQ = 90;
 const IQ_PER_WORD = 7;
 const STREAK_BONUS = 3;
 const GEMINI_MODEL = 'gemini-2.5-flash';
+const LOG_TAG = '[SquareWords]';
+
+const log = {
+  info: (...args) => console.info(LOG_TAG, ...args),
+  warn: (...args) => console.warn(LOG_TAG, ...args),
+  error: (...args) => console.error(LOG_TAG, ...args),
+  debug: (...args) => console.debug(LOG_TAG, ...args)
+};
+
+log.info('Client bundle parsed', { time: new Date().toISOString() });
+window.addEventListener('load', () => {
+  log.info('Page load complete', { time: new Date().toISOString() });
+});
 const DEFAULT_PUZZLE = {
   words: [
     'nebula',
@@ -42,7 +55,8 @@ const wordTemplate = document.querySelector('#wordTemplate');
 
 const dragState = {
   active: false,
-  pointerId: null
+  pointerId: null,
+  originTile: null
 };
 
 const state = {
@@ -56,11 +70,15 @@ const state = {
   wordItems: new Map(),
   iqScore: BASE_IQ,
   streak: 0,
-  hintsUsed: 0
+  hintsUsed: 0,
+  wordPlacements: []
 };
 
 async function fetchGeminiPuzzle() {
+  const timerLabel = 'puzzle-fetch';
   try {
+    log.info('Requesting puzzle from API endpoint');
+    console.time(timerLabel);
     const response = await fetch('/api/puzzle', { cache: 'no-store' });
 
     if (!response.ok) {
@@ -68,6 +86,10 @@ async function fetchGeminiPuzzle() {
     }
 
     const puzzle = await response.json();
+    console.timeEnd(timerLabel);
+    log.info('Puzzle payload received', {
+      wordCount: Array.isArray(puzzle.words) ? puzzle.words.length : 0
+    });
     if (!Array.isArray(puzzle.words) || !puzzle.words.length) {
       throw new Error('Invalid words payload');
     }
@@ -78,7 +100,12 @@ async function fetchGeminiPuzzle() {
       theme: puzzle.theme || 'Freestyle Flow'
     };
   } catch (error) {
-    console.warn('Remote puzzle fetch failed, using fallback puzzle.', error);
+    try {
+      console.timeEnd(timerLabel);
+    } catch (timerError) {
+      log.debug('Timer already settled', timerError.message);
+    }
+    log.warn('Remote puzzle fetch failed, using fallback puzzle.', error);
     return {
       words: [...DEFAULT_PUZZLE.words],
       insight: DEFAULT_PUZZLE.insight,
@@ -87,11 +114,33 @@ async function fetchGeminiPuzzle() {
   }
 }
 
-function createBoardLetters(words) {
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+function getNeighborIndices(index, gridDim) {
+  const neighbors = [];
+  const row = Math.floor(index / gridDim);
+  const col = index % gridDim;
+  for (let r = Math.max(0, row - 1); r <= Math.min(gridDim - 1, row + 1); r++) {
+    for (let c = Math.max(0, col - 1); c <= Math.min(gridDim - 1, col + 1); c++) {
+      if (r === row && c === col) continue;
+      neighbors.push(r * gridDim + c);
+    }
+  }
+  return neighbors;
+}
+
+function generateFallbackLayout(words) {
+  log.warn('Falling back to frequency-based board layout');
   const letterRequirements = new Map();
   for (const word of words) {
     const counts = new Map();
-    for (const char of word.toUpperCase()) {
+    for (const char of word) {
       if (!/[A-Z]/.test(char)) continue;
       counts.set(char, (counts.get(char) || 0) + 1);
     }
@@ -110,23 +159,111 @@ function createBoardLetters(words) {
     Math.max(BOARD_MIN_DIM, Math.ceil(Math.sqrt(Math.max(letters.length, BOARD_MIN_DIM ** 2))))
   );
   const boardSlots = gridDim * gridDim;
-
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   while (letters.length < boardSlots) {
-    const filler = alphabet[Math.floor(Math.random() * alphabet.length)];
-    letters.push(filler);
+    letters.push(alphabet[Math.floor(Math.random() * alphabet.length)]);
+  }
+  shuffleArray(letters);
+
+  return {
+    letters: letters.slice(0, boardSlots),
+    gridDim,
+    placements: []
+  };
+}
+
+function tryPlaceWordOnBoard(word, board, gridDim) {
+  const totalCells = board.length;
+  const uppercase = word.toUpperCase();
+  const startCandidates = [];
+  for (let i = 0; i < totalCells; i++) {
+    const cell = board[i];
+    if (cell === null || cell === uppercase[0]) {
+      startCandidates.push(i);
+    }
+  }
+  shuffleArray(startCandidates);
+
+  for (const start of startCandidates) {
+    const path = new Array(uppercase.length);
+    const visited = new Set();
+
+    const search = (index, depth) => {
+      const letter = uppercase[depth];
+      const current = board[index];
+      if (current !== null && current !== letter) {
+        return false;
+      }
+
+      path[depth] = index;
+      visited.add(index);
+
+      if (depth === uppercase.length - 1) {
+        return true;
+      }
+
+      const neighbors = shuffleArray(getNeighborIndices(index, gridDim));
+      for (const neighbor of neighbors) {
+        if (visited.has(neighbor)) continue;
+        if (search(neighbor, depth + 1)) {
+          return true;
+        }
+      }
+
+      visited.delete(index);
+      return false;
+    };
+
+    if (search(start, 0)) {
+      path.forEach((cellIndex, position) => {
+        board[cellIndex] = uppercase[position];
+      });
+      return path;
+    }
   }
 
-  if (letters.length > boardSlots) {
-    letters = letters.slice(0, boardSlots);
+  return null;
+}
+
+function generateBoardLayout(words) {
+  const uppercaseWords = words
+    .map((word) => word.toUpperCase())
+    .filter((word) => /^[A-Z]+$/.test(word));
+  if (uppercaseWords.length !== words.length) {
+    log.warn('Filtered non-alphabetic entries from word list', {
+      original: words.length,
+      sanitized: uppercaseWords.length
+    });
+  }
+  const sortedWords = [...uppercaseWords].sort((a, b) => b.length - a.length);
+  const longest = sortedWords[0]?.length || BOARD_MIN_DIM;
+  const minDim = Math.max(BOARD_MIN_DIM, Math.ceil(Math.sqrt(longest)));
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+  for (let gridDim = minDim; gridDim <= BOARD_MAX_DIM; gridDim++) {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const board = Array(gridDim * gridDim).fill(null);
+      const placements = [];
+      let success = true;
+
+      for (const word of sortedWords) {
+        const path = tryPlaceWordOnBoard(word, board, gridDim);
+        if (!path) {
+          success = false;
+          break;
+        }
+        placements.push({ word, path });
+      }
+
+      if (success) {
+        const letters = board.map((cell) => cell ?? alphabet[Math.floor(Math.random() * alphabet.length)]);
+        log.info('Generated structured board layout', { gridDim, attempt: attempt + 1 });
+        return { letters, gridDim, placements };
+      }
+    }
   }
 
-  for (let i = letters.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [letters[i], letters[j]] = [letters[j], letters[i]];
-  }
-
-  return { letters, gridDim };
+  return generateFallbackLayout(sortedWords);
 }
 
 function renderBoard() {
@@ -146,6 +283,18 @@ function renderBoard() {
     tile.addEventListener('pointerenter', (event) => handlePointerEnter(event, tile, index));
     boardEl.appendChild(tile);
   });
+
+  if (state.wordPlacements.length) {
+    log.info('Board rendered with placements');
+    console.table(
+      state.wordPlacements.map((placement) => ({
+        word: placement.word,
+        path: placement.path.join(' → ')
+      }))
+    );
+  } else {
+    log.info('Board rendered without placement metadata');
+  }
 }
 
 function updateCurrentWord(message) {
@@ -190,12 +339,53 @@ function handlePointerDown(event, tile, index) {
 
   dragState.active = true;
   dragState.pointerId = event.pointerId;
+  dragState.originTile = tile;
+  tile.setPointerCapture?.(event.pointerId);
+  document.addEventListener('pointermove', handlePointerMove);
   document.addEventListener('pointerup', handlePointerUp);
   document.addEventListener('pointercancel', handlePointerUp);
 }
 
 function handlePointerEnter(event, tile, index) {
   if (!dragState.active || dragState.pointerId !== event.pointerId) {
+    return;
+  }
+
+  processTileInteraction(tile, index);
+}
+
+function handlePointerUp(event) {
+  if (!dragState.active || dragState.pointerId !== event.pointerId) {
+    return;
+  }
+
+  dragState.active = false;
+  dragState.pointerId = null;
+  dragState.originTile?.releasePointerCapture?.(event.pointerId);
+  dragState.originTile = null;
+  document.removeEventListener('pointermove', handlePointerMove);
+  document.removeEventListener('pointerup', handlePointerUp);
+  document.removeEventListener('pointercancel', handlePointerUp);
+}
+
+function handlePointerMove(event) {
+  if (!dragState.active || dragState.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const element = document.elementFromPoint(event.clientX, event.clientY);
+  if (!element) return;
+  const tile = element.closest('.tile');
+  if (!tile) return;
+  const index = Number.parseInt(tile.dataset.index, 10);
+  if (Number.isNaN(index)) return;
+
+  processTileInteraction(tile, index);
+}
+
+function processTileInteraction(tile, index) {
+  if (tile.classList.contains('disabled')) return;
+  if (state.selected[state.selected.length - 1] === index) {
     return;
   }
 
@@ -211,17 +401,6 @@ function handlePointerEnter(event, tile, index) {
   }
 
   selectTile(tile, index, { silentFail: true });
-}
-
-function handlePointerUp(event) {
-  if (!dragState.active || dragState.pointerId !== event.pointerId) {
-    return;
-  }
-
-  dragState.active = false;
-  dragState.pointerId = null;
-  document.removeEventListener('pointerup', handlePointerUp);
-  document.removeEventListener('pointercancel', handlePointerUp);
 }
 
 function selectTile(tile, index, options = {}) {
@@ -367,8 +546,10 @@ function shuffleBoard() {
     const j = Math.floor(Math.random() * (i + 1));
     [state.boardLetters[i], state.boardLetters[j]] = [state.boardLetters[j], state.boardLetters[i]];
   }
+  state.wordPlacements = [];
   renderBoard();
   flashMessage('Grid remixed. Follow the flow!');
+  log.info('Board shuffled and placement metadata cleared');
 }
 
 async function shareProgress() {
@@ -401,6 +582,8 @@ async function shareProgress() {
 }
 
 async function loadPuzzle() {
+  log.info('Puzzle load started');
+  console.time('puzzle-bootstrap');
   boardEl.classList.add('loading');
   insightMessageEl.textContent = 'Generating a fresh puzzle…';
   const puzzle = await fetchGeminiPuzzle();
@@ -415,9 +598,10 @@ async function loadPuzzle() {
   state.streak = 0;
   state.iqScore = BASE_IQ;
 
-  const { letters, gridDim } = createBoardLetters(state.targetWords);
+  const { letters, gridDim, placements } = generateBoardLayout(state.targetWords);
   state.boardLetters = letters;
   state.gridDim = gridDim;
+  state.wordPlacements = placements;
 
   insightMessageEl.innerHTML = `<strong>${state.theme}</strong> — ${state.insight}`;
   updateWordList(state.targetWords);
@@ -425,6 +609,11 @@ async function loadPuzzle() {
   updateWordsFound();
   updateIqScore();
   updateStreak();
+  console.timeEnd('puzzle-bootstrap');
+  log.info('Puzzle ready', {
+    gridDim: state.gridDim,
+    targetWords: state.targetWords.length
+  });
 }
 
 function registerEvents() {
@@ -448,6 +637,7 @@ function registerEvents() {
 }
 
 function bootstrap() {
+  log.info('Bootstrap invoked');
   registerEvents();
   loadPuzzle();
 }
