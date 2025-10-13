@@ -38,13 +38,14 @@ const submitBtn = document.querySelector('#submitBtn');
 const clearBtn = document.querySelector('#clearBtn');
 const shuffleBtn = document.querySelector('#shuffleBtn');
 const shareBtn = document.querySelector('#shareBtn');
-const apiKeyBtn = document.querySelector('#apiKeyBtn');
-const apiDialog = document.querySelector('#apiDialog');
-const apiKeyInput = document.querySelector('#apiKeyInput');
 const wordTemplate = document.querySelector('#wordTemplate');
 
+const dragState = {
+  active: false,
+  pointerId: null
+};
+
 const state = {
-  apiKey: null,
   targetWords: [],
   insight: '',
   theme: '',
@@ -58,76 +59,31 @@ const state = {
   hintsUsed: 0
 };
 
-function loadApiKey() {
-  const stored = localStorage.getItem('gemini_api_key');
-  if (stored) {
-    state.apiKey = stored;
-  }
-}
-
-function saveApiKey(key) {
-  state.apiKey = key;
-  if (key) {
-    localStorage.setItem('gemini_api_key', key);
-  } else {
-    localStorage.removeItem('gemini_api_key');
-  }
-}
-
 async function fetchGeminiPuzzle() {
-  if (!state.apiKey) {
-    return { ...DEFAULT_PUZZLE };
-  }
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${state.apiKey}`;
-  const prompt = `You are creating the daily puzzle for a mobile word-grid game similar to Boggle.
-Return a strict JSON object with keys "words", "insight", and "theme".
-- "words" must be an array of 10 to 14 unique English nouns, verbs, or adjectives, each 4-7 letters long, lowercase.
-- "insight" must be a short (max 220 characters) hype message that references the theme and encourages the player.
-- "theme" must be 2-3 words describing the shared mood of the list.
-Example:
-{"words":["gleam","craft"],"insight":"...","theme":"Creative Spark"}
-Respond with JSON only.`;
-
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [{ text: prompt }]
-          }
-        ]
-      })
-    });
+    const response = await fetch('/api/puzzle', { cache: 'no-store' });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
 
-    const payload = await response.json();
-    const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!text) {
-      throw new Error('No content returned');
-    }
-
-    const jsonStart = text.indexOf('{');
-    const jsonEnd = text.lastIndexOf('}');
-    const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
-    if (!Array.isArray(parsed.words) || !parsed.words.length) {
+    const puzzle = await response.json();
+    if (!Array.isArray(puzzle.words) || !puzzle.words.length) {
       throw new Error('Invalid words payload');
     }
 
-    const uniqueWords = [...new Set(parsed.words.map((w) => w.toLowerCase()))];
     return {
-      words: uniqueWords,
-      insight: parsed.insight || 'Lexicon locked and loaded—time to flex!',
-      theme: parsed.theme || 'Freestyle Flow'
+      words: [...new Set(puzzle.words.map((word) => word.toLowerCase()))],
+      insight: puzzle.insight || 'Lexicon locked and loaded—time to flex!',
+      theme: puzzle.theme || 'Freestyle Flow'
     };
   } catch (error) {
     console.warn('Remote puzzle fetch failed, using fallback puzzle.', error);
-    return { ...DEFAULT_PUZZLE };
+    return {
+      words: [...DEFAULT_PUZZLE.words],
+      insight: DEFAULT_PUZZLE.insight,
+      theme: DEFAULT_PUZZLE.theme
+    };
   }
 }
 
@@ -186,40 +142,10 @@ function renderBoard() {
     tile.textContent = letter;
     tile.dataset.index = index;
     tile.setAttribute('aria-label', `Letter ${letter}`);
-    tile.addEventListener('click', () => handleTileClick(tile, index));
+    tile.addEventListener('pointerdown', (event) => handlePointerDown(event, tile, index));
+    tile.addEventListener('pointerenter', (event) => handlePointerEnter(event, tile, index));
     boardEl.appendChild(tile);
   });
-}
-
-function handleTileClick(tile, index) {
-  if (tile.classList.contains('disabled')) return;
-
-  if (state.selected.includes(index)) {
-    if (state.selected[state.selected.length - 1] === index) {
-      state.selected.pop();
-      tile.classList.remove('active');
-      updateCurrentWord();
-    }
-    return;
-  }
-
-  const lastIndex = state.selected[state.selected.length - 1];
-  if (typeof lastIndex === 'number') {
-    const { gridDim } = state;
-    const row = Math.floor(index / gridDim);
-    const col = index % gridDim;
-    const lastRow = Math.floor(lastIndex / gridDim);
-    const lastCol = lastIndex % gridDim;
-    const isAdjacent = Math.abs(row - lastRow) <= 1 && Math.abs(col - lastCol) <= 1;
-    if (!isAdjacent) {
-      flashMessage('Connect adjacent tiles only.');
-      return;
-    }
-  }
-
-  state.selected.push(index);
-  tile.classList.add('active');
-  updateCurrentWord();
 }
 
 function updateCurrentWord(message) {
@@ -228,13 +154,110 @@ function updateCurrentWord(message) {
     return;
   }
   const word = state.selected.map((index) => state.boardLetters[index]).join('');
-  currentWordEl.textContent = word ? word : 'Tap tiles to build a word';
+  currentWordEl.textContent = word ? word : 'Tap or swipe tiles to build a word';
 }
 
-function clearSelection() {
+function clearSelection(options = {}) {
   state.selected = [];
   boardEl.querySelectorAll('.tile').forEach((tile) => tile.classList.remove('active'));
-  updateCurrentWord('Start a fresh path.');
+  if (options.silent) {
+    updateCurrentWord();
+  } else {
+    updateCurrentWord('Start a fresh path.');
+  }
+}
+
+function handlePointerDown(event, tile, index) {
+  if (tile.classList.contains('disabled')) return;
+
+  event.preventDefault();
+
+  if (state.selected[state.selected.length - 1] === index) {
+    state.selected.pop();
+    tile.classList.remove('active');
+    updateCurrentWord();
+    return;
+  }
+
+  const alreadySelected = state.selected.includes(index);
+  const continuation = !alreadySelected && state.selected.length > 0 && isAdjacent(index);
+
+  if (!continuation || alreadySelected) {
+    clearSelection({ silent: true });
+  }
+
+  selectTile(tile, index);
+
+  dragState.active = true;
+  dragState.pointerId = event.pointerId;
+  document.addEventListener('pointerup', handlePointerUp);
+  document.addEventListener('pointercancel', handlePointerUp);
+}
+
+function handlePointerEnter(event, tile, index) {
+  if (!dragState.active || dragState.pointerId !== event.pointerId) {
+    return;
+  }
+
+  const backtrackIndex = state.selected[state.selected.length - 2];
+  if (typeof backtrackIndex === 'number' && backtrackIndex === index) {
+    const removed = state.selected.pop();
+    const removedTile = boardEl.querySelector(`[data-index="${removed}"]`);
+    if (removedTile) {
+      removedTile.classList.remove('active');
+    }
+    updateCurrentWord();
+    return;
+  }
+
+  selectTile(tile, index, { silentFail: true });
+}
+
+function handlePointerUp(event) {
+  if (!dragState.active || dragState.pointerId !== event.pointerId) {
+    return;
+  }
+
+  dragState.active = false;
+  dragState.pointerId = null;
+  document.removeEventListener('pointerup', handlePointerUp);
+  document.removeEventListener('pointercancel', handlePointerUp);
+}
+
+function selectTile(tile, index, options = {}) {
+  const { silentFail = false } = options;
+
+  if (tile.classList.contains('disabled')) return false;
+
+  if (state.selected.includes(index)) {
+    return false;
+  }
+
+  if (!isAdjacent(index)) {
+    if (!silentFail) {
+      flashMessage('Connect adjacent tiles only.');
+    }
+    return false;
+  }
+
+  state.selected.push(index);
+  tile.classList.add('active');
+  updateCurrentWord();
+  return true;
+}
+
+function isAdjacent(index) {
+  const lastIndex = state.selected[state.selected.length - 1];
+  if (typeof lastIndex !== 'number') {
+    return true;
+  }
+
+  const { gridDim } = state;
+  const row = Math.floor(index / gridDim);
+  const col = index % gridDim;
+  const lastRow = Math.floor(lastIndex / gridDim);
+  const lastCol = lastIndex % gridDim;
+  return Math.abs(row - lastRow) <= 1 && Math.abs(col - lastCol) <= 1;
 }
 
 function submitWord() {
@@ -404,23 +427,9 @@ async function loadPuzzle() {
   updateStreak();
 }
 
-function initApiDialog() {
-  apiKeyBtn.addEventListener('click', () => {
-    apiKeyInput.value = state.apiKey ?? '';
-    apiDialog.showModal();
-  });
-
-  apiDialog.addEventListener('close', () => {
-    if (apiDialog.returnValue === 'confirm') {
-      saveApiKey(apiKeyInput.value.trim());
-      loadPuzzle();
-    }
-  });
-}
-
 function registerEvents() {
   submitBtn.addEventListener('click', submitWord);
-  clearBtn.addEventListener('click', clearSelection);
+  clearBtn.addEventListener('click', () => clearSelection());
   hintBtn.addEventListener('click', provideHint);
   revealBtn.addEventListener('click', revealAll);
   shuffleBtn.addEventListener('click', shuffleBoard);
@@ -439,8 +448,6 @@ function registerEvents() {
 }
 
 function bootstrap() {
-  loadApiKey();
-  initApiDialog();
   registerEvents();
   loadPuzzle();
 }

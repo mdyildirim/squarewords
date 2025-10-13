@@ -18,12 +18,9 @@
         <div class="hero__text">
           <h1>SquareWords IQ</h1>
           <p class="tagline">
-            Swipe the grid, unlock words, and watch your NeuroSpark IQ soar.
+            Swipe or tap the grid, unlock words, and watch your NeuroSpark IQ soar.
           </p>
         </div>
-        <button id="apiKeyBtn" class="ghost-btn" type="button">
-          <span>API Key</span>
-        </button>
       </header>
 
       <main class="layout">
@@ -48,7 +45,7 @@
         <section class="board-section">
           <div id="board" class="board" aria-label="Letter grid" role="application"></div>
           <div class="current-word" aria-live="polite">
-            <span id="currentWord">Tap tiles to build a word</span>
+            <span id="currentWord">Tap or swipe tiles to build a word</span>
             <button id="shuffleBtn" class="ghost-btn" type="button">Shuffle</button>
           </div>
           <div class="controls">
@@ -73,22 +70,6 @@
         </section>
       </main>
     </div>
-
-    <dialog id="apiDialog">
-      <form method="dialog" class="api-form">
-        <h2>API Key</h2>
-        <p>
-          Enter your Google AI Studio key to generate a fresh puzzle with
-          our cloud-powered word engine. Your key stays in this
-          browser only.
-        </p>
-        <input id="apiKeyInput" type="password" placeholder="AIza..." aria-label="API key" />
-        <menu>
-          <button value="cancel" class="ghost-btn">Cancel</button>
-          <button value="confirm" class="primary-btn">Save</button>
-        </menu>
-      </form>
-    </dialog>
 
     <template id="wordTemplate">
       <li>
