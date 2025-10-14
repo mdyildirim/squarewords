@@ -841,10 +841,19 @@ async function loadPuzzle() {
   state.iqScore = BASE_IQ;
   state.solvedPaths = new Map();
 
-  const { letters, gridDim, placements } = generateBoardLayout(state.targetWords);
-  state.boardLetters = letters;
-  state.gridDim = gridDim;
-  state.wordPlacements = placements;
+  try {
+    puzzlePayload = await fetchGeminiPuzzle();
+  } catch (error) {
+    log.error('Puzzle fetch threw unexpectedly, reverting to default payload', {
+      message: error instanceof Error ? error.message : String(error)
+    });
+    flashMessage('We improvised a backup board while the cosmos realigns.');
+    puzzlePayload = {
+      words: [...DEFAULT_PUZZLE.words],
+      insight: DEFAULT_PUZZLE.insight,
+      theme: DEFAULT_PUZZLE.theme
+    };
+  }
 
   try {
     const puzzle = await fetchGeminiPuzzle();
