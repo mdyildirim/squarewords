@@ -61,6 +61,9 @@ let finalIqValueEl = document.querySelector('#finalIqValue');
 const victorySubtitleEl = document.querySelector('#victorySubtitle');
 const wordTemplate = document.querySelector('#wordTemplate');
 
+let loadingMessageTimer = null;
+let loadingMessageIndex = 0;
+
 const dragState = {
   active: false,
   pointerId: null,
@@ -246,6 +249,37 @@ function generateFallbackLayout(words) {
     gridDim,
     placements
   };
+}
+
+function computeWordHue(word) {
+  let hash = 0;
+  for (let i = 0; i < word.length; i += 1) {
+    hash = (hash << 5) - hash + word.charCodeAt(i);
+    hash |= 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return (hue + 140) % 360;
+}
+
+function decorateSolvedTile(tile, word, position = 0, hue = computeWordHue(word)) {
+  tile.classList.add('solved');
+  tile.dataset.solvedWord = word;
+  tile.setAttribute('aria-disabled', 'true');
+  tile.setAttribute('tabindex', '-1');
+  tile.style.setProperty('--solved-hue', `${hue}`);
+  tile.style.setProperty('--solved-order', position);
+}
+
+function normalizeSolvedEntry(entry, word) {
+  if (!entry) {
+    return { indices: [], hue: computeWordHue(word) };
+  }
+  if (Array.isArray(entry)) {
+    return { indices: entry, hue: computeWordHue(word) };
+  }
+  const indices = Array.isArray(entry.indices) ? entry.indices : [];
+  const hue = typeof entry.hue === 'number' ? entry.hue : computeWordHue(word);
+  return { indices, hue };
 }
 
 function tryPlaceWordOnBoard(word, board, gridDim) {
@@ -791,9 +825,11 @@ async function loadPuzzle() {
   victoryOverlayEl?.classList.add('hidden');
   victoryOverlayEl?.setAttribute('aria-hidden', 'true');
   boardEl.classList.add('loading');
+  boardStageEl?.classList.remove('victory-flare');
+  boardStageEl?.querySelectorAll('.board-celebration').forEach((element) => element.remove());
   insightMessageEl.textContent = 'Generating a fresh puzzle…';
-  const puzzle = await fetchGeminiPuzzle();
-  boardEl.classList.remove('loading');
+  showLoadingCurtain();
+  updateLoadingMessage('Collecting constellations of clues…');
 
   state.targetWords = puzzle.words.map((word) => word.toLowerCase());
   state.insight = puzzle.insight;
