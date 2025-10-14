@@ -80,8 +80,7 @@ const state = {
   streak: 0,
   hintsUsed: 0,
   wordPlacements: [],
-  solvedPaths: new Map(),
-  victoryShown: false
+  solvedPaths: new Map()
 };
 
 function showLoadingCurtain(message) {
@@ -386,22 +385,12 @@ function generateBoardLayout(words) {
 
       if (success) {
         const letters = board.map((cell) => cell ?? alphabet[Math.floor(Math.random() * alphabet.length)]);
-        const layout = { letters, gridDim, placements };
-        const validation = validateLayout(layout, sortedWords);
-        if (validation.valid) {
-          log.info('Generated structured board layout', {
-            gridDim,
-            attempt: attempt + 1,
-            placements: placements.length
-          });
-          return layout;
-        }
-
-        log.warn('Structured layout failed validation, retrying', {
+        log.info('Generated structured board layout', {
           gridDim,
           attempt: attempt + 1,
-          missing: validation.missing
+          placements: placements.length
         });
+        return { letters, gridDim, placements };
       }
     }
   }
@@ -409,14 +398,7 @@ function generateBoardLayout(words) {
   log.warn('Unable to embed all words using structured layout, invoking fallback', {
     words: sortedWords.length
   });
-  const fallback = generateFallbackLayout(sortedWords);
-  const fallbackValidation = validateLayout(fallback, sortedWords);
-  if (!fallbackValidation.valid) {
-    log.error('Fallback layout validation reported missing words', {
-      missing: fallbackValidation.missing
-    });
-  }
-  return fallback;
+  return generateFallbackLayout(sortedWords);
 }
 
 function renderBoard() {
@@ -453,14 +435,11 @@ function renderBoard() {
 }
 
 function applySolvedHighlights() {
-  state.solvedPaths.forEach((indices, word) => {
+  state.solvedPaths.forEach((indices) => {
     indices.forEach((index) => {
       const tile = boardEl.querySelector(`[data-index="${index}"]`);
       if (tile) {
         tile.classList.add('solved');
-        tile.dataset.solvedWord = word;
-        tile.setAttribute('aria-disabled', 'true');
-        tile.setAttribute('tabindex', '-1');
       }
     });
   });
@@ -618,70 +597,8 @@ function celebrateWord(indices) {
     tile.style.setProperty('--celebrate-delay', `${position * 40}ms`);
   });
   setTimeout(() => {
-    tiles.forEach((tile) => {
-      tile.classList.remove('celebrate');
-      tile.style.removeProperty('--celebrate-delay');
-    });
+    tiles.forEach((tile) => tile.classList.remove('celebrate'));
   }, 720);
-}
-
-function lockSolvedWord(word, indices) {
-  const frozen = [...indices];
-  state.solvedPaths.set(word, frozen);
-  frozen.forEach((index) => {
-    const tile = boardEl.querySelector(`[data-index="${index}"]`);
-    if (tile) {
-      tile.classList.add('solved');
-      tile.dataset.solvedWord = word;
-      tile.setAttribute('aria-disabled', 'true');
-      tile.setAttribute('tabindex', '-1');
-    }
-  });
-}
-
-function handlePuzzleComplete() {
-  if (state.victoryShown) {
-    return;
-  }
-
-  state.victoryShown = true;
-  log.info('Puzzle fully solved', {
-    iq: state.iqScore,
-    words: state.targetWords.length,
-    hintsUsed: state.hintsUsed
-  });
-
-  if (victorySubtitleEl) {
-    const words = state.targetWords.length;
-    victorySubtitleEl.innerHTML = `You uncovered all ${words} words with an IQ surge to <strong id="finalIqValue">${state.iqScore}</strong>. Ready for a fresh constellation or want to share the glory?`;
-    finalIqValueEl = victorySubtitleEl.querySelector('#finalIqValue');
-  }
-
-  if (finalIqValueEl) {
-    finalIqValueEl.textContent = state.iqScore;
-  }
-
-  if (victoryOverlayEl) {
-    victoryOverlayEl.classList.remove('hidden');
-    victoryOverlayEl.setAttribute('aria-hidden', 'false');
-    requestAnimationFrame(() => {
-      playAgainBtn?.focus();
-    });
-  }
-
-  flashMessage('Legendary! Every word illuminated.');
-}
-
-async function handleVictoryShareClick() {
-  log.info('Victory share prompt accepted');
-  const shared = await shareProgress('victory');
-  if (shared) {
-    victoryOverlayEl?.classList.add('hidden');
-    victoryOverlayEl?.setAttribute('aria-hidden', 'true');
-    flashMessage('Shared! Bask in the glory or shuffle for a rematch.');
-  } else {
-    flashMessage('No worries—your triumph is safe (for now).');
-  }
 }
 
 function finalizeSelection(options = {}) {
@@ -715,7 +632,6 @@ function finalizeSelection(options = {}) {
   updateStreak();
   updateIqScore();
   updateWordsFound();
-  lockSolvedWord(guess, selection);
   celebrateWord(selection);
   log.info('Word solved', { guess, reason, streak: state.streak });
   flashMessage(`✨ ${guess.toUpperCase()} unlocked!`);
@@ -815,12 +731,9 @@ function shuffleBoard() {
   state.wordPlacements = layout.placements;
   state.found.clear();
   state.solvedPaths = new Map();
-  state.victoryShown = false;
   state.streak = 0;
   state.iqScore = BASE_IQ;
   state.hintsUsed = 0;
-  victoryOverlayEl?.classList.add('hidden');
-  victoryOverlayEl?.setAttribute('aria-hidden', 'true');
   updateWordList(state.targetWords);
   renderBoard();
   updateWordsFound();
@@ -879,7 +792,23 @@ async function loadPuzzle() {
   victoryOverlayEl?.setAttribute('aria-hidden', 'true');
   boardEl.classList.add('loading');
   insightMessageEl.textContent = 'Generating a fresh puzzle…';
-  showLoadingCurtain('Consulting Gemini for cosmic words…');
+  const puzzle = await fetchGeminiPuzzle();
+  boardEl.classList.remove('loading');
+
+  state.targetWords = puzzle.words.map((word) => word.toLowerCase());
+  state.insight = puzzle.insight;
+  state.theme = puzzle.theme;
+  state.found.clear();
+  state.selected = [];
+  state.hintsUsed = 0;
+  state.streak = 0;
+  state.iqScore = BASE_IQ;
+  state.solvedPaths = new Map();
+
+  const { letters, gridDim, placements } = generateBoardLayout(state.targetWords);
+  state.boardLetters = letters;
+  state.gridDim = gridDim;
+  state.wordPlacements = placements;
 
   try {
     const puzzle = await fetchGeminiPuzzle();

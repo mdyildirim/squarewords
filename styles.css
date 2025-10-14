@@ -295,21 +295,6 @@ body {
   box-shadow: 0 12px 30px rgba(110, 250, 204, 0.5);
 }
 
-.tile.solved {
-  color: #0b1b16;
-  pointer-events: none;
-}
-
-.tile.solved:not(.celebrate) {
-  background: linear-gradient(135deg, rgba(110, 250, 204, 0.4), rgba(39, 223, 177, 0.55));
-  box-shadow: 0 8px 24px rgba(110, 250, 204, 0.45);
-  animation: solvedGlow 2.4s ease-in-out infinite alternate;
-}
-
-.tile.solved::after {
-  border-color: rgba(10, 70, 54, 0.45);
-}
-
 @keyframes tileCelebrate {
   0% {
     transform: scale(1);
@@ -322,77 +307,6 @@ body {
   }
   100% {
     transform: scale(1);
-  }
-}
-
-@keyframes solvedGlow {
-  0% {
-    box-shadow: 0 8px 24px rgba(110, 250, 204, 0.35);
-    filter: saturate(1);
-    transform: translateY(0);
-  }
-
-  100% {
-    box-shadow: 0 16px 36px rgba(39, 223, 177, 0.65);
-    filter: saturate(1.25);
-    transform: translateY(-2px);
-  }
-}
-
-@keyframes orbitSpin {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes loadingPulse {
-  0%,
-  100% {
-    transform: scale(0.9);
-    opacity: 0.6;
-  }
-
-  50% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
-}
-
-@keyframes bob {
-  0%,
-  100% {
-    transform: rotate(var(--angle)) translateX(62%) translateY(0);
-  }
-
-  50% {
-    transform: rotate(var(--angle)) translateX(62%) translateY(-8%);
-  }
-}
-
-@keyframes sparklePulse {
-  0%,
-  100% {
-    transform: scale(0.6) translateY(0);
-    opacity: 0.65;
-  }
-
-  50% {
-    transform: scale(1.05) translateY(-6px);
-    opacity: 1;
-  }
-}
-
-@keyframes confettiFall {
-  0% {
-    transform: translateY(-10%) rotate(0deg);
-  }
-
-  100% {
-    transform: translateY(10%) rotate(360deg);
   }
 }
 
