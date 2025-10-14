@@ -356,22 +356,12 @@ function generateBoardLayout(words) {
 
       if (success) {
         const letters = board.map((cell) => cell ?? alphabet[Math.floor(Math.random() * alphabet.length)]);
-        const layout = { letters, gridDim, placements };
-        const validation = validateLayout(layout, sortedWords);
-        if (validation.valid) {
-          log.info('Generated structured board layout', {
-            gridDim,
-            attempt: attempt + 1,
-            placements: placements.length
-          });
-          return layout;
-        }
-
-        log.warn('Structured layout failed validation, retrying', {
+        log.info('Generated structured board layout', {
           gridDim,
           attempt: attempt + 1,
-          missing: validation.missing
+          placements: placements.length
         });
+        return { letters, gridDim, placements };
       }
     }
   }
@@ -379,14 +369,7 @@ function generateBoardLayout(words) {
   log.warn('Unable to embed all words using structured layout, invoking fallback', {
     words: sortedWords.length
   });
-  const fallback = generateFallbackLayout(sortedWords);
-  const fallbackValidation = validateLayout(fallback, sortedWords);
-  if (!fallbackValidation.valid) {
-    log.error('Fallback layout validation reported missing words', {
-      missing: fallbackValidation.missing
-    });
-  }
-  return fallback;
+  return generateFallbackLayout(sortedWords);
 }
 
 function renderBoard() {
@@ -585,22 +568,8 @@ function celebrateWord(indices) {
     tile.style.setProperty('--celebrate-delay', `${position * 40}ms`);
   });
   setTimeout(() => {
-    tiles.forEach((tile) => {
-      tile.classList.remove('celebrate');
-      tile.style.removeProperty('--celebrate-delay');
-    });
+    tiles.forEach((tile) => tile.classList.remove('celebrate'));
   }, 720);
-}
-
-function lockSolvedWord(word, indices) {
-  const frozen = [...indices];
-  state.solvedPaths.set(word, frozen);
-  frozen.forEach((index) => {
-    const tile = boardEl.querySelector(`[data-index="${index}"]`);
-    if (tile) {
-      tile.classList.add('solved');
-    }
-  });
 }
 
 function finalizeSelection(options = {}) {
@@ -634,7 +603,6 @@ function finalizeSelection(options = {}) {
   updateStreak();
   updateIqScore();
   updateWordsFound();
-  lockSolvedWord(guess, selection);
   celebrateWord(selection);
   log.info('Word solved', { guess, reason, streak: state.streak });
   flashMessage(`✨ ${guess.toUpperCase()} unlocked!`);
