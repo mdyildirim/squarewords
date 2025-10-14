@@ -176,10 +176,127 @@ body {
   background: linear-gradient(135deg, rgba(110, 250, 204, 0.2), rgba(39, 223, 177, 0.35));
 }
 
+.tile.celebrate {
+  animation: tileCelebrate 0.72s ease var(--celebrate-delay, 0ms);
+  background: linear-gradient(135deg, rgba(110, 250, 204, 0.45), rgba(39, 223, 177, 0.65));
+  box-shadow: 0 12px 30px rgba(110, 250, 204, 0.5);
+}
+
+.tile.solved {
+  color: #0b1b16;
+}
+
+.tile.solved:not(.celebrate) {
+  background: linear-gradient(135deg, rgba(110, 250, 204, 0.4), rgba(39, 223, 177, 0.55));
+  box-shadow: 0 8px 24px rgba(110, 250, 204, 0.45);
+  animation: solvedGlow 3.2s ease-in-out infinite;
+}
+
+.tile.solved::after {
+  border-color: rgba(10, 70, 54, 0.45);
+}
+
+@keyframes tileCelebrate {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.18);
+  }
+  60% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes solvedGlow {
+  0%,
+  100% {
+    box-shadow: 0 8px 24px rgba(110, 250, 204, 0.35);
+    filter: saturate(1);
+  }
+  50% {
+    box-shadow: 0 14px 34px rgba(110, 250, 204, 0.65);
+    filter: saturate(1.2);
+  }
+}
+
 .tile.disabled {
   background: rgba(255, 255, 255, 0.02);
   color: rgba(247, 249, 255, 0.35);
   cursor: default;
+}
+
+@media (max-width: 900px) {
+  body {
+    padding: clamp(1rem, 3vw, 2rem) clamp(0.5rem, 2.5vw, 1.5rem) 3.5rem;
+  }
+
+  .app-shell {
+    gap: 1.25rem;
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 0.75rem;
+  }
+
+  .layout {
+    gap: 1.25rem;
+  }
+
+  .board {
+    gap: clamp(0.35rem, 2vw, 0.5rem);
+    width: min(100%, 440px);
+  }
+
+  .tile {
+    border-radius: 0.85rem;
+    font-size: clamp(1.1rem, 8vw, 1.7rem);
+  }
+
+  .tile::after {
+    inset: 3px;
+    border-radius: 0.75rem;
+  }
+}
+
+@media (max-width: 540px) {
+  body {
+    padding: clamp(0.75rem, 5vw, 1.25rem) clamp(0.5rem, 4vw, 1rem) 3rem;
+  }
+
+  .hero {
+    align-items: center;
+    text-align: center;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.6rem, 9vw, 2.1rem);
+  }
+
+  .status-card {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  }
+
+  .board {
+    gap: clamp(0.28rem, 3vw, 0.4rem);
+    width: min(100%, 360px);
+  }
+
+  .tile {
+    border-radius: 0.7rem;
+    font-size: clamp(0.95rem, 9vw, 1.45rem);
+  }
+
+  .tile::after {
+    inset: 2.5px;
+    border-radius: 0.6rem;
+  }
 }
 
 .current-word {
