@@ -38,7 +38,10 @@ const DEFAULT_PUZZLE = {
   theme: 'Cosmic Curiosity'
 };
 
+const boardStageEl = document.querySelector('#boardStage');
 const boardEl = document.querySelector('#board');
+const loadingCurtainEl = document.querySelector('#loadingCurtain');
+const loadingMessageEl = loadingCurtainEl?.querySelector('.loading-message');
 const wordListEl = document.querySelector('#wordList');
 const currentWordEl = document.querySelector('#currentWord');
 const wordsFoundEl = document.querySelector('#wordsFound');
@@ -51,6 +54,11 @@ const revealBtn = document.querySelector('#revealBtn');
 const clearBtn = document.querySelector('#clearBtn');
 const shuffleBtn = document.querySelector('#shuffleBtn');
 const shareBtn = document.querySelector('#shareBtn');
+const victoryOverlayEl = document.querySelector('#victoryOverlay');
+const playAgainBtn = document.querySelector('#playAgainBtn');
+const victoryShareBtn = document.querySelector('#victoryShareBtn');
+let finalIqValueEl = document.querySelector('#finalIqValue');
+const victorySubtitleEl = document.querySelector('#victorySubtitle');
 const wordTemplate = document.querySelector('#wordTemplate');
 
 const dragState = {
@@ -74,6 +82,27 @@ const state = {
   wordPlacements: [],
   solvedPaths: new Map()
 };
+
+function showLoadingCurtain(message) {
+  if (!loadingCurtainEl) return;
+  if (message && loadingMessageEl) {
+    loadingMessageEl.textContent = message;
+  }
+  loadingCurtainEl.classList.remove('is-hidden');
+  boardStageEl?.classList.add('is-loading');
+}
+
+function updateLoadingMessage(message) {
+  if (message && loadingMessageEl) {
+    loadingMessageEl.textContent = message;
+  }
+}
+
+function hideLoadingCurtain() {
+  if (!loadingCurtainEl) return;
+  loadingCurtainEl.classList.add('is-hidden');
+  boardStageEl?.classList.remove('is-loading');
+}
 
 async function fetchGeminiPuzzle() {
   const timerLabel = 'puzzle-fetch';
@@ -436,7 +465,7 @@ function clearSelection(options = {}) {
 }
 
 function handlePointerDown(event, tile, index) {
-  if (tile.classList.contains('disabled')) return;
+  if (tile.classList.contains('disabled') || tile.classList.contains('solved')) return;
 
   event.preventDefault();
 
@@ -504,7 +533,7 @@ function handlePointerMove(event) {
 }
 
 function processTileInteraction(tile, index) {
-  if (tile.classList.contains('disabled')) return;
+  if (tile.classList.contains('disabled') || tile.classList.contains('solved')) return;
   if (state.selected[state.selected.length - 1] === index) {
     return;
   }
@@ -526,7 +555,7 @@ function processTileInteraction(tile, index) {
 function selectTile(tile, index, options = {}) {
   const { silentFail = false } = options;
 
-  if (tile.classList.contains('disabled')) return false;
+  if (tile.classList.contains('disabled') || tile.classList.contains('solved')) return false;
 
   if (state.selected.includes(index)) {
     return false;
@@ -608,7 +637,7 @@ function finalizeSelection(options = {}) {
   flashMessage(`✨ ${guess.toUpperCase()} unlocked!`);
 
   if (state.found.size === state.targetWords.length) {
-    flashMessage('You solved the entire vault!');
+    handlePuzzleComplete();
   }
 
   setTimeout(() => clearSelection({ silent: true }), 640);
@@ -618,7 +647,18 @@ function updateIqScore() {
   const boost = state.found.size * IQ_PER_WORD + Math.max(0, state.streak - 1) * STREAK_BONUS;
   state.iqScore = BASE_IQ + boost;
   iqValueEl.textContent = state.iqScore;
-  const meterWidth = Math.min(100, ((state.iqScore - BASE_IQ) / (IQ_PER_WORD * state.targetWords.length + 80)) * 100 + 20);
+  const totalWords = state.targetWords.length;
+  const maxStreakBonus = Math.max(0, totalWords - 1) * STREAK_BONUS;
+  const maxScore = BASE_IQ + totalWords * IQ_PER_WORD + maxStreakBonus;
+  const scoreRange = Math.max(1, maxScore - BASE_IQ);
+  let meterWidth = totalWords
+    ? Math.min(1, Math.max(0, (state.iqScore - BASE_IQ) / scoreRange)) * 100
+    : 0;
+  if (totalWords && state.found.size === totalWords) {
+    meterWidth = 100;
+  } else {
+    meterWidth = Math.max(18, Math.min(100, meterWidth));
+  }
   iqFillEl.style.width = `${meterWidth}%`;
   iqFillEl.parentElement.setAttribute('aria-valuenow', state.iqScore);
 }
@@ -706,7 +746,13 @@ function shuffleBoard() {
   });
 }
 
-async function shareProgress() {
+async function shareProgress(source = 'primary') {
+  log.info('Share requested', {
+    source,
+    iq: state.iqScore,
+    wordsFound: state.found.size,
+    totalWords: state.targetWords.length
+  });
   const percentage = state.targetWords.length
     ? Math.round((state.found.size / state.targetWords.length) * 100)
     : 0;
@@ -722,22 +768,28 @@ async function shareProgress() {
       await navigator.share(shareData);
     } catch (error) {
       console.warn('Share canceled', error);
+      return false;
     }
-    return;
+    return true;
   }
 
   try {
     await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
     flashMessage('Link copied—spread the genius!');
+    return true;
   } catch (error) {
     console.warn('Clipboard failed', error);
     flashMessage('Could not share automatically. Copy manually!');
+    return false;
   }
 }
 
 async function loadPuzzle() {
   log.info('Puzzle load started');
   console.time('puzzle-bootstrap');
+  state.victoryShown = false;
+  victoryOverlayEl?.classList.add('hidden');
+  victoryOverlayEl?.setAttribute('aria-hidden', 'true');
   boardEl.classList.add('loading');
   insightMessageEl.textContent = 'Generating a fresh puzzle…';
   const puzzle = await fetchGeminiPuzzle();
@@ -758,17 +810,41 @@ async function loadPuzzle() {
   state.gridDim = gridDim;
   state.wordPlacements = placements;
 
-  insightMessageEl.innerHTML = `<strong>${state.theme}</strong> — ${state.insight}`;
-  updateWordList(state.targetWords);
-  renderBoard();
-  updateWordsFound();
-  updateIqScore();
-  updateStreak();
-  console.timeEnd('puzzle-bootstrap');
-  log.info('Puzzle ready', {
-    gridDim: state.gridDim,
-    targetWords: state.targetWords.length
-  });
+  try {
+    const puzzle = await fetchGeminiPuzzle();
+    updateLoadingMessage('Locking letters into orbit…');
+
+    state.targetWords = puzzle.words.map((word) => word.toLowerCase());
+    state.insight = puzzle.insight;
+    state.theme = puzzle.theme;
+    state.found.clear();
+    state.selected = [];
+    state.hintsUsed = 0;
+    state.streak = 0;
+    state.iqScore = BASE_IQ;
+    state.solvedPaths = new Map();
+
+    updateLoadingMessage('Mapping an unbeatable layout…');
+    const { letters, gridDim, placements } = generateBoardLayout(state.targetWords);
+    state.boardLetters = letters;
+    state.gridDim = gridDim;
+    state.wordPlacements = placements;
+
+    insightMessageEl.innerHTML = `<strong>${state.theme}</strong> — ${state.insight}`;
+    updateWordList(state.targetWords);
+    renderBoard();
+    updateWordsFound();
+    updateIqScore();
+    updateStreak();
+    log.info('Puzzle ready', {
+      gridDim: state.gridDim,
+      targetWords: state.targetWords.length
+    });
+  } finally {
+    hideLoadingCurtain();
+    boardEl.classList.remove('loading');
+    console.timeEnd('puzzle-bootstrap');
+  }
 }
 
 function registerEvents() {
@@ -776,7 +852,16 @@ function registerEvents() {
   hintBtn.addEventListener('click', provideHint);
   revealBtn.addEventListener('click', revealAll);
   shuffleBtn.addEventListener('click', shuffleBoard);
-  shareBtn.addEventListener('click', shareProgress);
+  shareBtn.addEventListener('click', () => {
+    shareProgress('cta');
+  });
+  playAgainBtn?.addEventListener('click', () => {
+    log.info('Player opted for a fresh puzzle after celebration');
+    window.location.reload();
+  });
+  victoryShareBtn?.addEventListener('click', () => {
+    handleVictoryShareClick();
+  });
   document.addEventListener('keydown', (event) => {
     const target = event.target;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
