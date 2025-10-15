@@ -123,15 +123,7 @@ async function fetchGeminiPuzzle() {
     log.info('Puzzle payload received', {
       wordCount: Array.isArray(puzzle.words) ? puzzle.words.length : 0
     });
-    if (!Array.isArray(puzzle.words) || !puzzle.words.length) {
-      throw new Error('Invalid words payload');
-    }
-
-    return {
-      words: [...new Set(puzzle.words.map((word) => word.toLowerCase()))],
-      insight: puzzle.insight || 'Lexicon locked and loaded—time to flex!',
-      theme: puzzle.theme || 'Freestyle Flow'
-    };
+    return puzzle;
   } catch (error) {
     try {
       console.timeEnd(timerLabel);
@@ -147,6 +139,37 @@ async function fetchGeminiPuzzle() {
       theme: DEFAULT_PUZZLE.theme
     };
   }
+}
+
+function normalizePuzzlePayload(input) {
+  const fallback = {
+    words: [...DEFAULT_PUZZLE.words],
+    insight: DEFAULT_PUZZLE.insight,
+    theme: DEFAULT_PUZZLE.theme
+  };
+
+  if (!input || typeof input !== 'object') {
+    log.warn('Puzzle payload missing or malformed, using fallback puzzle.');
+    return fallback;
+  }
+
+  const rawWords = Array.isArray(input.words) ? input.words.filter(Boolean) : [];
+  const words = rawWords.length
+    ? [...new Set(rawWords.map((word) => String(word).trim().toLowerCase()))]
+    : [...fallback.words];
+
+  if (!rawWords.length) {
+    log.warn('Puzzle payload missing usable words, falling back to defaults');
+  }
+
+  const insight = typeof input.insight === 'string' && input.insight.trim().length
+    ? input.insight.trim()
+    : fallback.insight;
+  const theme = typeof input.theme === 'string' && input.theme.trim().length
+    ? input.theme.trim()
+    : fallback.theme;
+
+  return { words, insight, theme };
 }
 
 function shuffleArray(array) {
