@@ -6,12 +6,6 @@ const STREAK_BONUS = 3;
 const GEMINI_MODEL = 'gemini-2.5-flash';
 const LOG_TAG = '[SquareWords]';
 const BOARD_LAYOUT_ATTEMPTS = 90;
-const LOADING_MESSAGES = [
-  'Charting a nebula of words…',
-  'Collecting constellations of clues…',
-  'Infusing starlit syllables into orbit…',
-  'Polishing your puzzle cockpit…'
-];
 
 const log = {
   info: (...args) => console.info(LOG_TAG, ...args),
@@ -89,61 +83,21 @@ const state = {
   streak: 0,
   hintsUsed: 0,
   wordPlacements: [],
-  solvedPaths: new Map(),
-  victoryShown: false
+  solvedPaths: new Map()
 };
 
-function setLoadingMessage(message) {
+function showLoadingCurtain(message) {
+  if (!loadingCurtainEl) return;
   if (message && loadingMessageEl) {
     loadingMessageEl.textContent = message;
   }
-}
-
-function stopLoadingMessageCycle() {
-  if (loadingMessageTimer) {
-    clearTimeout(loadingMessageTimer);
-    loadingMessageTimer = null;
-  }
-}
-
-function queueNextLoadingMessage(nextIndex) {
-  if (!LOADING_MESSAGES.length || !loadingCurtainEl) return;
-  stopLoadingMessageCycle();
-  loadingMessageTimer = window.setTimeout(() => {
-    if (!loadingCurtainEl || loadingCurtainEl.classList.contains('is-hidden')) {
-      stopLoadingMessageCycle();
-      return;
-    }
-    loadingMessageIndex = nextIndex % LOADING_MESSAGES.length;
-    setLoadingMessage(LOADING_MESSAGES[loadingMessageIndex]);
-    queueNextLoadingMessage((loadingMessageIndex + 1) % LOADING_MESSAGES.length);
-  }, 2600);
-}
-
-function startLoadingMessageCycle(initialIndex = 0) {
-  if (!LOADING_MESSAGES.length) return;
-  stopLoadingMessageCycle();
-  loadingMessageIndex = initialIndex % LOADING_MESSAGES.length;
-  setLoadingMessage(LOADING_MESSAGES[loadingMessageIndex]);
-  queueNextLoadingMessage((loadingMessageIndex + 1) % LOADING_MESSAGES.length);
-}
-
-function showLoadingCurtain(messageIndex = 0) {
-  if (!loadingCurtainEl) return;
   loadingCurtainEl.classList.remove('is-hidden');
   boardStageEl?.classList.add('is-loading');
-  startLoadingMessageCycle(messageIndex);
 }
 
 function updateLoadingMessage(message) {
-  if (!message) return;
-  setLoadingMessage(message);
-  if (LOADING_MESSAGES.length) {
-    const matchIndex = LOADING_MESSAGES.indexOf(message);
-    if (matchIndex >= 0) {
-      loadingMessageIndex = matchIndex;
-    }
-    queueNextLoadingMessage((loadingMessageIndex + 1) % LOADING_MESSAGES.length);
+  if (message && loadingMessageEl) {
+    loadingMessageEl.textContent = message;
   }
 }
 
@@ -151,7 +105,6 @@ function hideLoadingCurtain() {
   if (!loadingCurtainEl) return;
   loadingCurtainEl.classList.add('is-hidden');
   boardStageEl?.classList.remove('is-loading');
-  stopLoadingMessageCycle();
 }
 
 async function fetchGeminiPuzzle() {
@@ -180,7 +133,11 @@ async function fetchGeminiPuzzle() {
     log.warn('Remote puzzle fetch failed, using fallback puzzle.', {
       message: error instanceof Error ? error.message : String(error)
     });
-    return null;
+    return {
+      words: [...DEFAULT_PUZZLE.words],
+      insight: DEFAULT_PUZZLE.insight,
+      theme: DEFAULT_PUZZLE.theme
+    };
   }
 }
 
@@ -485,22 +442,12 @@ function generateBoardLayout(words) {
 
       if (success) {
         const letters = board.map((cell) => cell ?? alphabet[Math.floor(Math.random() * alphabet.length)]);
-        const layout = { letters, gridDim, placements };
-        const validation = validateLayout(layout, sortedWords);
-        if (validation.valid) {
-          log.info('Generated structured board layout', {
-            gridDim,
-            attempt: attempt + 1,
-            placements: placements.length
-          });
-          return layout;
-        }
-
-        log.warn('Structured layout failed validation, retrying', {
+        log.info('Generated structured board layout', {
           gridDim,
           attempt: attempt + 1,
-          missing: validation.missing
+          placements: placements.length
         });
+        return { letters, gridDim, placements };
       }
     }
   }
@@ -508,14 +455,7 @@ function generateBoardLayout(words) {
   log.warn('Unable to embed all words using structured layout, invoking fallback', {
     words: sortedWords.length
   });
-  const fallback = generateFallbackLayout(sortedWords);
-  const fallbackValidation = validateLayout(fallback, sortedWords);
-  if (!fallbackValidation.valid) {
-    log.error('Fallback layout validation reported missing words', {
-      missing: fallbackValidation.missing
-    });
-  }
-  return fallback;
+  return generateFallbackLayout(sortedWords);
 }
 
 function renderBoard() {
@@ -552,12 +492,11 @@ function renderBoard() {
 }
 
 function applySolvedHighlights() {
-  state.solvedPaths.forEach((entry, word) => {
-    const { indices, hue } = normalizeSolvedEntry(entry, word);
-    indices.forEach((index, position) => {
+  state.solvedPaths.forEach((indices) => {
+    indices.forEach((index) => {
       const tile = boardEl.querySelector(`[data-index="${index}"]`);
       if (tile) {
-        decorateSolvedTile(tile, word, position, hue);
+        tile.classList.add('solved');
       }
     });
   });
@@ -715,103 +654,8 @@ function celebrateWord(indices) {
     tile.style.setProperty('--celebrate-delay', `${position * 40}ms`);
   });
   setTimeout(() => {
-    tiles.forEach((tile) => {
-      tile.classList.remove('celebrate');
-      tile.style.removeProperty('--celebrate-delay');
-    });
+    tiles.forEach((tile) => tile.classList.remove('celebrate'));
   }, 720);
-}
-
-function lockSolvedWord(word, indices) {
-  const frozen = [...indices];
-  const hue = computeWordHue(word);
-  state.solvedPaths.set(word, { indices: frozen, hue });
-  frozen.forEach((index, position) => {
-    const tile = boardEl.querySelector(`[data-index="${index}"]`);
-    if (tile) {
-      decorateSolvedTile(tile, word, position, hue);
-    }
-  });
-}
-
-function triggerVictoryCelebration() {
-  if (!boardStageEl) return;
-  boardStageEl.querySelectorAll('.board-celebration').forEach((element) => element.remove());
-  boardStageEl.classList.add('victory-flare');
-
-  const burst = document.createElement('div');
-  burst.className = 'board-celebration';
-  const shardCount = Math.max(12, Math.min(24, state.targetWords.length * 2));
-  const baseHue = computeWordHue(state.theme || 'victory');
-
-  for (let i = 0; i < shardCount; i += 1) {
-    const shard = document.createElement('span');
-    shard.style.setProperty('--i', i);
-    const hue = (baseHue + (360 / shardCount) * i) % 360;
-    shard.style.setProperty('--burst-hue', `${hue}`);
-    burst.appendChild(shard);
-  }
-
-  boardStageEl.appendChild(burst);
-
-  window.setTimeout(() => {
-    if (burst.isConnected) {
-      burst.remove();
-    }
-    boardStageEl.classList.remove('victory-flare');
-  }, 1800);
-}
-
-function handlePuzzleComplete() {
-  if (state.victoryShown) {
-    return;
-  }
-
-  state.victoryShown = true;
-  log.info('Puzzle fully solved', {
-    iq: state.iqScore,
-    words: state.targetWords.length,
-    hintsUsed: state.hintsUsed
-  });
-
-  triggerVictoryCelebration();
-
-  if (victorySubtitleEl) {
-    const words = state.targetWords.length;
-    victorySubtitleEl.innerHTML = `You uncovered all ${words} words with an IQ surge to <strong id="finalIqValue">${state.iqScore}</strong>. Ready for another round or want to share the glory?`;
-    finalIqValueEl = victorySubtitleEl.querySelector('#finalIqValue');
-  }
-
-  if (finalIqValueEl) {
-    finalIqValueEl.textContent = state.iqScore;
-  }
-
-  if (victoryOverlayEl) {
-    window.setTimeout(() => {
-      victoryOverlayEl.classList.remove('hidden');
-      victoryOverlayEl.setAttribute('aria-hidden', 'false');
-      requestAnimationFrame(() => {
-        playAgainBtn?.focus();
-      });
-    }, 650);
-  }
-
-  flashMessage('Legendary! Every word illuminated.');
-  window.setTimeout(() => {
-    updateCurrentWord('All words solved! Start another round or share your triumph.');
-  }, 2000);
-}
-
-async function handleVictoryShareClick() {
-  log.info('Victory share prompt accepted');
-  const shared = await shareProgress('victory');
-  if (shared) {
-    victoryOverlayEl?.classList.add('hidden');
-    victoryOverlayEl?.setAttribute('aria-hidden', 'true');
-    flashMessage('Shared! Bask in the glory or shuffle for a rematch.');
-  } else {
-    flashMessage('No worries—your triumph is safe (for now).');
-  }
 }
 
 function finalizeSelection(options = {}) {
@@ -845,7 +689,6 @@ function finalizeSelection(options = {}) {
   updateStreak();
   updateIqScore();
   updateWordsFound();
-  lockSolvedWord(guess, selection);
   celebrateWord(selection);
   log.info('Word solved', { guess, reason, streak: state.streak });
   flashMessage(`✨ ${guess.toUpperCase()} unlocked!`);
@@ -939,20 +782,15 @@ function revealAll() {
 
 function shuffleBoard() {
   log.info('Shuffle requested—regenerating board layout');
-  boardStageEl?.classList.remove('victory-flare');
-  boardStageEl?.querySelectorAll('.board-celebration').forEach((element) => element.remove());
   const layout = generateBoardLayout(state.targetWords);
   state.boardLetters = layout.letters;
   state.gridDim = layout.gridDim;
   state.wordPlacements = layout.placements;
   state.found.clear();
   state.solvedPaths = new Map();
-  state.victoryShown = false;
   state.streak = 0;
   state.iqScore = BASE_IQ;
   state.hintsUsed = 0;
-  victoryOverlayEl?.classList.add('hidden');
-  victoryOverlayEl?.setAttribute('aria-hidden', 'true');
   updateWordList(state.targetWords);
   renderBoard();
   updateWordsFound();
@@ -1016,7 +854,15 @@ async function loadPuzzle() {
   showLoadingCurtain();
   updateLoadingMessage('Collecting constellations of clues…');
 
-  let puzzlePayload;
+  state.targetWords = puzzle.words.map((word) => word.toLowerCase());
+  state.insight = puzzle.insight;
+  state.theme = puzzle.theme;
+  state.found.clear();
+  state.selected = [];
+  state.hintsUsed = 0;
+  state.streak = 0;
+  state.iqScore = BASE_IQ;
+  state.solvedPaths = new Map();
 
   try {
     puzzlePayload = await fetchGeminiPuzzle();
@@ -1025,20 +871,20 @@ async function loadPuzzle() {
       message: error instanceof Error ? error.message : String(error)
     });
     flashMessage('We improvised a backup board while the cosmos realigns.');
-    puzzlePayload = null;
+    puzzlePayload = {
+      words: [...DEFAULT_PUZZLE.words],
+      insight: DEFAULT_PUZZLE.insight,
+      theme: DEFAULT_PUZZLE.theme
+    };
   }
 
   try {
-    updateLoadingMessage('Sequencing a stellar word list…');
-    const { words, insight, theme } = normalizePuzzlePayload(puzzlePayload);
-    log.info('Puzzle payload normalized', {
-      wordCount: words.length,
-      theme
-    });
+    const puzzle = await fetchGeminiPuzzle();
+    updateLoadingMessage('Locking letters into orbit…');
 
-    state.targetWords = words;
-    state.insight = insight;
-    state.theme = theme;
+    state.targetWords = puzzle.words.map((word) => word.toLowerCase());
+    state.insight = puzzle.insight;
+    state.theme = puzzle.theme;
     state.found.clear();
     state.selected = [];
     state.hintsUsed = 0;
@@ -1046,7 +892,7 @@ async function loadPuzzle() {
     state.iqScore = BASE_IQ;
     state.solvedPaths = new Map();
 
-    updateLoadingMessage('Stitching the grid galaxy together…');
+    updateLoadingMessage('Mapping an unbeatable layout…');
     const { letters, gridDim, placements } = generateBoardLayout(state.targetWords);
     state.boardLetters = letters;
     state.gridDim = gridDim;
