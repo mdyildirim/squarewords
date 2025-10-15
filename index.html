@@ -43,13 +43,38 @@
         </section>
 
         <section class="board-section">
-          <div id="board" class="board" aria-label="Letter grid" role="application"></div>
+          <div id="boardStage" class="board-stage">
+            <div
+              id="loadingCurtain"
+              class="loading-curtain"
+              role="status"
+              aria-live="assertive"
+            >
+              <div class="loading-aurora" aria-hidden="true"></div>
+              <div class="loading-constellation" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div class="loading-orbit">
+                <span data-letter="S"></span>
+                <span data-letter="Q"></span>
+                <span data-letter="I"></span>
+                <span data-letter="Q"></span>
+                <div class="loading-comet" aria-hidden="true"></div>
+              </div>
+              <p class="loading-message">Charting a nebula of words…</p>
+            </div>
+            <div id="board" class="board" aria-label="Letter grid" role="application"></div>
+          </div>
           <div class="current-word" aria-live="polite">
             <span id="currentWord">Tap or swipe tiles to build a word</span>
             <button id="shuffleBtn" class="ghost-btn" type="button">Shuffle</button>
           </div>
           <div class="controls">
-            <button id="submitBtn" class="primary-btn" type="button">Submit</button>
             <button id="clearBtn" class="ghost-btn" type="button">Clear</button>
             <button id="hintBtn" class="ghost-btn" type="button">Hint</button>
             <button id="revealBtn" class="ghost-btn" type="button">Reveal All</button>
@@ -77,6 +102,34 @@
         <span class="status"></span>
       </li>
     </template>
+
+    <div
+      id="victoryOverlay"
+      class="victory-overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="victoryTitle"
+    >
+      <div class="victory-card">
+        <div class="victory-sparkles" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <h2 id="victoryTitle">Genius Unlocked!</h2>
+        <p id="victorySubtitle">
+          You uncovered every word with an IQ surge to <strong id="finalIqValue">181</strong>. Ready for another round or want to
+          share the glory?
+        </p>
+        <div class="victory-actions">
+          <button id="playAgainBtn" class="primary-btn" type="button">Start New Puzzle</button>
+          <button id="victoryShareBtn" class="ghost-btn" type="button">Share the Glory</button>
+        </div>
+      </div>
+    </div>
 
     <script type="module" src="app.js"></script>
   </body>
